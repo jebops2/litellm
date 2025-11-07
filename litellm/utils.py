@@ -7635,6 +7635,12 @@ class ProviderConfigManager:
             from litellm.llms.azure.videos.transformation import AzureVideoConfig
 
             return AzureVideoConfig()
+        elif LlmProviders.VERTEX_AI == provider:
+            from litellm.llms.vertex_ai.video_generation.transformation import (
+                get_vertex_ai_video_config,
+            )
+
+            return get_vertex_ai_video_config(model)
         return None
 
     @staticmethod

@@ -1,6 +1,6 @@
 import types
 from abc import ABC, abstractmethod
-from typing import TYPE_CHECKING, Any, Dict, Optional, Tuple, Union
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple, Union
 
 import httpx
 from httpx._types import RequestFiles
@@ -181,7 +181,7 @@ class BaseVideoConfig(ABC):
         self,
         raw_response: httpx.Response,
         logging_obj: LiteLLMLoggingObj,
-    ) -> Dict[str,str]:
+    ) -> List[VideoObject]:
         pass
 
     @abstractmethod

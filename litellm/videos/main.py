@@ -14,7 +14,11 @@ from litellm.videos.utils import VideoGenerationRequestUtils
 from litellm.constants import DEFAULT_VIDEO_ENDPOINT_MODEL, request_timeout as DEFAULT_REQUEST_TIMEOUT
 from litellm.main import base_llm_http_handler
 from litellm.utils import client, ProviderConfigManager
-from litellm.types.utils import FileTypes, CallTypes
+from litellm.types.utils import CallTypes
+try:
+    from litellm.types.utils import FileTypes  # type: ignore
+except ImportError:
+    from openai.types.audio.transcription_create_params import FileTypes  # type: ignore
 from litellm.types.router import GenericLiteLLMParams
 from litellm.litellm_core_utils.litellm_logging import Logging as LiteLLMLoggingObj
 from litellm.llms.base_llm.videos.transformation import BaseVideoConfig
@@ -115,14 +119,15 @@ async def avideo_generation(
 def video_generation(
     prompt: str,
     model: Optional[str] = None,
-    input_reference: Optional[str] = None,
+    input_reference: Optional[FileTypes] = None,
+    seconds: Optional[str] = None,
     size: Optional[str] = None,
     user: Optional[str] = None,
-    timeout=600,  # default to 10 minutes
-    api_key: Optional[str] = None,
-    api_base: Optional[str] = None,
-    api_version: Optional[str] = None,
+    timeout: int = 600,
     custom_llm_provider=None,
+    extra_headers: Optional[Dict[str, Any]] = None,
+    extra_query: Optional[Dict[str, Any]] = None,
+    extra_body: Optional[Dict[str, Any]] = None,
     *,
     avideo_generation: Literal[True],
     **kwargs,
@@ -134,15 +139,15 @@ def video_generation(
 def video_generation(
     prompt: str,
     model: Optional[str] = None,
-    input_reference: Optional[str] = None,
+    input_reference: Optional[FileTypes] = None,
     seconds: Optional[str] = None,
     size: Optional[str] = None,
     user: Optional[str] = None,
-    timeout=600,  # default to 10 minutes
-    api_key: Optional[str] = None,
-    api_base: Optional[str] = None,
-    api_version: Optional[str] = None,
+    timeout: int = 600,
     custom_llm_provider=None,
+    extra_headers: Optional[Dict[str, Any]] = None,
+    extra_query: Optional[Dict[str, Any]] = None,
+    extra_body: Optional[Dict[str, Any]] = None,
     *,
     avideo_generation: Literal[False] = False,
     **kwargs,
@@ -528,11 +533,11 @@ async def avideo_remix(
 def video_remix(
     video_id: str,
     prompt: str,
-    timeout=600,  # default to 10 minutes
-    api_key: Optional[str] = None,
-    api_base: Optional[str] = None,
-    api_version: Optional[str] = None,
+    timeout: int = 600,
     custom_llm_provider=None,
+    extra_headers: Optional[Dict[str, Any]] = None,
+    extra_query: Optional[Dict[str, Any]] = None,
+    extra_body: Optional[Dict[str, Any]] = None,
     *,
     avideo_remix: Literal[True],
     **kwargs,
@@ -544,11 +549,11 @@ def video_remix(
 def video_remix(
     video_id: str,
     prompt: str,
-    timeout=600,  # default to 10 minutes
-    api_key: Optional[str] = None,
-    api_base: Optional[str] = None,
-    api_version: Optional[str] = None,
+    timeout: int = 600,
     custom_llm_provider=None,
+    extra_headers: Optional[Dict[str, Any]] = None,
+    extra_query: Optional[Dict[str, Any]] = None,
+    extra_body: Optional[Dict[str, Any]] = None,
     *,
     avideo_remix: Literal[False] = False,
     **kwargs,
@@ -746,11 +751,11 @@ def video_list(
     after: Optional[str] = None,
     limit: Optional[int] = None,
     order: Optional[str] = None,
-    timeout=600,  # default to 10 minutes
-    api_key: Optional[str] = None,
-    api_base: Optional[str] = None,
-    api_version: Optional[str] = None,
+    timeout: int = 600,
     custom_llm_provider=None,
+    extra_headers: Optional[Dict[str, Any]] = None,
+    extra_query: Optional[Dict[str, Any]] = None,
+    extra_body: Optional[Dict[str, Any]] = None,
     *,
     avideo_list: Literal[True],
     **kwargs,
@@ -763,11 +768,11 @@ def video_list(
     after: Optional[str] = None,
     limit: Optional[int] = None,
     order: Optional[str] = None,
-    timeout=600,  # default to 10 minutes
-    api_key: Optional[str] = None,
-    api_base: Optional[str] = None,
-    api_version: Optional[str] = None,
+    timeout: int = 600,
     custom_llm_provider=None,
+    extra_headers: Optional[Dict[str, Any]] = None,
+    extra_query: Optional[Dict[str, Any]] = None,
+    extra_body: Optional[Dict[str, Any]] = None,
     *,
     avideo_list: Literal[False] = False,
     **kwargs,
@@ -951,11 +956,11 @@ async def avideo_status(
 @overload
 def video_status(
     video_id: str,
-    timeout=600,  # default to 10 minutes
-    api_key: Optional[str] = None,
-    api_base: Optional[str] = None,
-    api_version: Optional[str] = None,
+    timeout: int = 600,
     custom_llm_provider=None,
+    extra_headers: Optional[Dict[str, Any]] = None,
+    extra_query: Optional[Dict[str, Any]] = None,
+    extra_body: Optional[Dict[str, Any]] = None,
     *,
     avideo_status: Literal[True],
     **kwargs,
@@ -966,11 +971,11 @@ def video_status(
 @overload
 def video_status(
     video_id: str,
-    timeout=600,  # default to 10 minutes
-    api_key: Optional[str] = None,
-    api_base: Optional[str] = None,
-    api_version: Optional[str] = None,
+    timeout: int = 600,
     custom_llm_provider=None,
+    extra_headers: Optional[Dict[str, Any]] = None,
+    extra_query: Optional[Dict[str, Any]] = None,
+    extra_body: Optional[Dict[str, Any]] = None,
     *,
     avideo_status: Literal[False] = False,
     **kwargs,

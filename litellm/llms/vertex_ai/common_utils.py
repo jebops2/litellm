@@ -132,7 +132,7 @@ def get_supports_response_schema(
 from typing import Literal, Optional
 
 all_gemini_url_modes = Literal[
-    "chat", "embedding", "batch_embedding", "image_generation", "count_tokens"
+    "chat", "embedding", "batch_embedding", "image_generation", "video_generation", "count_tokens"
 ]
 
 
@@ -179,6 +179,12 @@ def _get_vertex_url(
             url = f"https://{vertex_location}-aiplatform.googleapis.com/{vertex_api_version}/projects/{vertex_project}/locations/{vertex_location}/endpoints/{model}:{endpoint}"
     elif mode == "image_generation":
         endpoint = "predict"
+        url = f"https://{vertex_location}-aiplatform.googleapis.com/v1/projects/{vertex_project}/locations/{vertex_location}/publishers/google/models/{model}:{endpoint}"
+        if model.isdigit():
+            url = f"https://{vertex_location}-aiplatform.googleapis.com/{vertex_api_version}/projects/{vertex_project}/locations/{vertex_location}/endpoints/{model}:{endpoint}"
+    elif mode == "video_generation":
+        # Veo models use predictLongRunning endpoint
+        endpoint = "predictLongRunning"
         url = f"https://{vertex_location}-aiplatform.googleapis.com/v1/projects/{vertex_project}/locations/{vertex_location}/publishers/google/models/{model}:{endpoint}"
         if model.isdigit():
             url = f"https://{vertex_location}-aiplatform.googleapis.com/{vertex_api_version}/projects/{vertex_project}/locations/{vertex_location}/endpoints/{model}:{endpoint}"

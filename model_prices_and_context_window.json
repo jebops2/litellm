@@ -24432,5 +24432,101 @@
             "1024x1792",
             "1792x1024"
         ]
+    },
+    "vertex_ai/veo-3.0-generate-001": {
+        "litellm_provider": "vertex_ai-video-models",
+        "mode": "video_generation",
+        "output_cost_per_video_per_second": 0.10,
+        "source": "https://cloud.google.com/vertex-ai/generative-ai/pricing#imagen-models",
+        "supported_modalities": [
+            "text"
+        ],
+        "supported_output_modalities": [
+            "video"
+        ],
+        "supported_resolutions": [
+            "1280x768",
+            "768x1280"
+        ]
+    },
+    "vertex_ai/veo-3.0-fast-generate-001": {
+        "litellm_provider": "vertex_ai-video-models",
+        "mode": "video_generation",
+        "output_cost_per_video_per_second": 0.05,
+        "source": "https://cloud.google.com/vertex-ai/generative-ai/pricing#imagen-models",
+        "supported_modalities": [
+            "text"
+        ],
+        "supported_output_modalities": [
+            "video"
+        ],
+        "supported_resolutions": [
+            "1280x768",
+            "768x1280"
+        ]
+    },
+    "vertex_ai/veo-3.0-generate-preview": {
+        "litellm_provider": "vertex_ai-video-models",
+        "mode": "video_generation",
+        "output_cost_per_video_per_second": 0.10,
+        "source": "https://cloud.google.com/vertex-ai/generative-ai/pricing#imagen-models",
+        "supported_modalities": [
+            "text"
+        ],
+        "supported_output_modalities": [
+            "video"
+        ],
+        "supported_resolutions": [
+            "1280x768",
+            "768x1280"
+        ]
+    },
+    "vertex_ai/veo-3.0-fast-generate-preview": {
+        "litellm_provider": "vertex_ai-video-models",
+        "mode": "video_generation",
+        "output_cost_per_video_per_second": 0.05,
+        "source": "https://cloud.google.com/vertex-ai/generative-ai/pricing#imagen-models",
+        "supported_modalities": [
+            "text"
+        ],
+        "supported_output_modalities": [
+            "video"
+        ],
+        "supported_resolutions": [
+            "1280x768",
+            "768x1280"
+        ]
+    },
+    "vertex_ai/veo-3.1-generate-preview": {
+        "litellm_provider": "vertex_ai-video-models",
+        "mode": "video_generation",
+        "output_cost_per_video_per_second": 0.10,
+        "source": "https://cloud.google.com/vertex-ai/generative-ai/pricing#imagen-models",
+        "supported_modalities": [
+            "text"
+        ],
+        "supported_output_modalities": [
+            "video"
+        ],
+        "supported_resolutions": [
+            "1280x768",
+            "768x1280"
+        ]
+    },
+    "vertex_ai/veo-3.1-fast-generate-preview": {
+        "litellm_provider": "vertex_ai-video-models",
+        "mode": "video_generation",
+        "output_cost_per_video_per_second": 0.05,
+        "source": "https://cloud.google.com/vertex-ai/generative-ai/pricing#imagen-models",
+        "supported_modalities": [
+            "text"
+        ],
+        "supported_output_modalities": [
+            "video"
+        ],
+        "supported_resolutions": [
+            "1280x768",
+            "768x1280"
+        ]
     }
 }
