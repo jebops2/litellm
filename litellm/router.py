@@ -964,6 +964,19 @@ class Router:
 
             # No copy needed - data is only read and spread into new dict below
             data = deployment["litellm_params"]
+            
+            # Convert Pydantic object to dict if needed to ensure extra fields (like vector_store_ids) are included
+            if hasattr(data, 'model_dump'):
+                data = data.model_dump(exclude_none=False)
+            elif hasattr(data, 'dict'):
+                data = data.dict(exclude_none=False)
+            elif not isinstance(data, dict):
+                # If it's not a dict and doesn't have model_dump/dict, try to convert
+                try:
+                    data = dict(data) if hasattr(data, 'items') else data
+                except Exception:
+                    pass
+            
             model_name = data["model"]
             potential_model_client = self._get_client(
                 deployment=deployment, kwargs=kwargs
@@ -1272,6 +1285,18 @@ class Router:
             self._update_kwargs_with_deployment(deployment=deployment, kwargs=kwargs)
             # No copy needed - data is only read and spread into new dict below
             data = deployment["litellm_params"]
+            
+            # Convert Pydantic object to dict if needed to ensure extra fields (like vector_store_ids) are included
+            if hasattr(data, 'model_dump'):
+                data = data.model_dump(exclude_none=False)
+            elif hasattr(data, 'dict'):
+                data = data.dict(exclude_none=False)
+            elif not isinstance(data, dict):
+                # If it's not a dict and doesn't have model_dump/dict, try to convert
+                try:
+                    data = dict(data) if hasattr(data, 'items') else data
+                except Exception:
+                    pass
 
             model_name = data["model"]
 

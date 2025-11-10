@@ -26,6 +26,12 @@ from typing import (
     cast,
 )
 
+if TYPE_CHECKING:
+    from openai.types import Batch
+    from openai.types.fine_tuning.fine_tuning_job import FineTuningJob
+else:
+    from litellm.types.llms.openai import Batch, FineTuningJob
+
 from httpx import Response
 from pydantic import BaseModel
 
@@ -73,8 +79,6 @@ from litellm.responses.utils import ResponseAPILoggingUtils
 from litellm.types.containers.main import ContainerObject
 from litellm.types.llms.openai import (
     AllMessageValues,
-    Batch,
-    FineTuningJob,
     HttpxBinaryResponseContent,
     OpenAIFileObject,
     OpenAIModerationResponse,
@@ -671,6 +675,35 @@ class Logging(LiteLLMLoggingBaseClass):
                     self.model_call_details["prompt_integration"] = model.split("/")[0]
                     return custom_logger
 
+        #########################################################
+        # Vector Store / Knowledge Base hooks - Check FIRST if vector_store_ids exist
+        #########################################################
+        if litellm.vector_store_registry is not None:
+            # Check if vector_store_ids are present in non_default_params or tools
+            vector_store_ids = litellm.vector_store_registry.get_vector_store_ids_to_run(
+                non_default_params=non_default_params, tools=tools
+            )
+            if vector_store_ids:
+                # Vector store IDs found, prioritize vector store hook
+                vector_store_custom_logger = _init_custom_logger_compatible_class(
+                    logging_integration="vector_store_pre_call_hook",
+                    internal_usage_cache=None,
+                    llm_router=None,
+                )
+                if vector_store_custom_logger:
+                    self.model_call_details[
+                        "prompt_integration"
+                    ] = vector_store_custom_logger.__class__.__name__
+                    # Add to global callbacks so post-call hooks are invoked
+                    if (
+                        vector_store_custom_logger
+                        and vector_store_custom_logger not in litellm.callbacks
+                    ):
+                        litellm.logging_callback_manager.add_litellm_callback(
+                            vector_store_custom_logger
+                        )
+                    return vector_store_custom_logger
+
         # Then check for any registered CustomPromptManagement loggers
         prompt_management_loggers = (
             litellm.logging_callback_manager.get_custom_loggers_for_type(
@@ -692,7 +725,7 @@ class Logging(LiteLLMLoggingBaseClass):
             return anthropic_cache_control_logger
 
         #########################################################
-        # Vector Store / Knowledge Base hooks
+        # Vector Store / Knowledge Base hooks (fallback if no vector_store_ids)
         #########################################################
         if litellm.vector_store_registry is not None:
             vector_store_custom_logger = _init_custom_logger_compatible_class(
@@ -700,18 +733,19 @@ class Logging(LiteLLMLoggingBaseClass):
                 internal_usage_cache=None,
                 llm_router=None,
             )
-            self.model_call_details[
-                "prompt_integration"
-            ] = vector_store_custom_logger.__class__.__name__
-            # Add to global callbacks so post-call hooks are invoked
-            if (
-                vector_store_custom_logger
-                and vector_store_custom_logger not in litellm.callbacks
-            ):
-                litellm.logging_callback_manager.add_litellm_callback(
+            if vector_store_custom_logger:
+                self.model_call_details[
+                    "prompt_integration"
+                ] = vector_store_custom_logger.__class__.__name__
+                # Add to global callbacks so post-call hooks are invoked
+                if (
                     vector_store_custom_logger
-                )
-            return vector_store_custom_logger
+                    and vector_store_custom_logger not in litellm.callbacks
+                ):
+                    litellm.logging_callback_manager.add_litellm_callback(
+                        vector_store_custom_logger
+                    )
+                return vector_store_custom_logger
 
         return None
 
@@ -4369,7 +4403,7 @@ class StandardLoggingPayloadSetup:
 
             s3_object_key = get_s3_object_key(
                 s3_path=s3_path,  # Use actual s3_path from logger configuration
-                team_alias_prefix="",  # Don't split by team alias for cold storage
+                prefix="",  # Don't split by team alias for cold storage
                 start_time=start_time,
                 s3_file_name=s3_file_name,
             )
@@ -4594,7 +4628,9 @@ def get_standard_logging_object_payload(
         if init_response_obj is None:
             response_obj = {}
         elif isinstance(init_response_obj, BaseModel):
-            response_obj = init_response_obj.model_dump()
+            # Type cast to BaseModel to help type checker
+            base_model_obj = cast(BaseModel, init_response_obj)
+            response_obj = base_model_obj.model_dump()
             hidden_params = getattr(init_response_obj, "_hidden_params", None)
         elif isinstance(init_response_obj, dict):
             response_obj = init_response_obj
