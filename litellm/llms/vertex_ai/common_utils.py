@@ -147,7 +147,14 @@ def _get_vertex_url(
     url: Optional[str] = None
     endpoint: Optional[str] = None
 
-    model = litellm.VertexGeminiConfig.get_model_for_vertex_ai_url(model=model)
+    # For video generation, handle Veo models separately
+    if mode == "video_generation":
+        # Remove "vertex_ai/" prefix if present for Veo models
+        if model.startswith("vertex_ai/"):
+            model = model.replace("vertex_ai/", "", 1)
+    else:
+        model = litellm.VertexGeminiConfig.get_model_for_vertex_ai_url(model=model)
+    
     if mode == "chat":
         ### SET RUNTIME ENDPOINT ###
         endpoint = "generateContent"

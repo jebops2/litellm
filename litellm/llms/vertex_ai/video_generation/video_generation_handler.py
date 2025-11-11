@@ -29,6 +29,16 @@ class VertexVideoGeneration(VertexLLM):
         """
         Transform the optional params to the format expected by the Vertex AI API.
         For example, "aspect_ratio" is transformed to "aspectRatio".
+        
+        According to Vertex AI Veo API docs:
+        - "seconds" -> "duration" (integer)
+        - "size" -> "resolution" (for Veo 3 models: "720p" or "1080p")
+        - "aspect_ratio" -> "aspectRatio" ("16:9" or "9:16")
+        - "negative_prompt" -> "negativePrompt"
+        - "person_generation" -> "personGeneration" ("allow_adult" or "disallow")
+        - "sample_count" -> "sampleCount" (1-4)
+        - "seed" -> "seed" (0-4294967295)
+        - "storage_uri" -> "storageUri" (GCS bucket URI)
         """
         if optional_params is None:
             return {}
@@ -39,14 +49,62 @@ class VertexVideoGeneration(VertexLLM):
             return components[0] + "".join(word.capitalize() for word in components[1:])
 
         transformed_params = {}
+        
+        # Exclude non-serializable objects and internal parameters
+        excluded_keys = {
+            "client", "litellm_logging_obj", "litellm_call_id", 
+            "async_call", "mock_response", "model", "prompt",
+            "api_base", "vertex_project", "vertex_location", 
+            "vertex_credentials", "timeout", "extra_headers",
+            "model_response", "avideo_generation"
+        }
+        
         for key, value in optional_params.items():
-            if "_" in key:
+            # Skip excluded keys and None values
+            if key in excluded_keys or value is None:
+                continue
+            
+            # Special handling for specific parameters
+            if key == "seconds":
+                # Convert seconds to duration (integer)
+                try:
+                    transformed_params["duration"] = int(value)
+                except (ValueError, TypeError):
+                    # If conversion fails, skip it
+                    continue
+            elif key == "size":
+                # Convert size to resolution (for Veo 3 models)
+                # Map common size values to resolution
+                size_mapping = {
+                    "720p": "720p",
+                    "1080p": "1080p",
+                    "1280x720": "720p",
+                    "1920x1080": "1080p",
+                }
+                if value in size_mapping:
+                    transformed_params["resolution"] = size_mapping[value]
+                elif isinstance(value, str) and value.lower() in ["720p", "1080p"]:
+                    transformed_params["resolution"] = value.lower()
+            elif "_" in key:
+                # Convert snake_case to camelCase
                 camel_case_key = snake_to_camel(key)
                 transformed_params[camel_case_key] = value
             else:
+                # Keep as is if already in camelCase or no transformation needed
                 transformed_params[key] = value
 
         return transformed_params
+
+    def _is_json_serializable(self, obj: Any) -> bool:
+        """
+        Check if an object is JSON serializable.
+        """
+        import json
+        try:
+            json.dumps(obj)
+            return True
+        except (TypeError, ValueError):
+            return False
 
     def _poll_operation_sync(
         self,
@@ -95,15 +153,27 @@ class VertexVideoGeneration(VertexLLM):
             
             operation_data = response.json()
             
-            # Check for errors
+            # Check for errors at top level
             if "error" in operation_data:
-                error_msg = operation_data["error"].get("message", "Unknown error")
-                raise Exception(f"Operation error: {error_msg}")
+                # Don't raise exception - return error response so it can be processed
+                operation_data["done"] = True  # Mark as done so we stop polling
+                return operation_data
             
             # Check if operation is done
             is_done = operation_data.get("done", False)
             
             if is_done:
+                # Check if done but has error in response
+                response_data = operation_data.get("response", {})
+                if "error" in response_data:
+                    error_info = response_data.get("error", {})
+                    # Add error to top level for consistent processing
+                    operation_data["error"] = {
+                        "message": error_info.get("message", "Unknown error"),
+                        "code": error_info.get("code", 0),
+                        "details": error_info.get("details", []),
+                    }
+                
                 return operation_data
             
             # Wait before next poll
@@ -164,15 +234,27 @@ class VertexVideoGeneration(VertexLLM):
             
             operation_data = response.json()
             
-            # Check for errors
+            # Check for errors at top level
             if "error" in operation_data:
-                error_msg = operation_data["error"].get("message", "Unknown error")
-                raise Exception(f"Operation error: {error_msg}")
+                # Don't raise exception - return error response so it can be processed
+                operation_data["done"] = True  # Mark as done so we stop polling
+                return operation_data
             
             # Check if operation is done
             is_done = operation_data.get("done", False)
             
             if is_done:
+                # Check if done but has error in response
+                response_data = operation_data.get("response", {})
+                if "error" in response_data:
+                    error_info = response_data.get("error", {})
+                    # Add error to top level for consistent processing
+                    operation_data["error"] = {
+                        "message": error_info.get("message", "Unknown error"),
+                        "code": error_info.get("code", 0),
+                        "details": error_info.get("details", []),
+                    }
+                
                 return operation_data
             
             # Wait before next poll
@@ -207,12 +289,26 @@ class VertexVideoGeneration(VertexLLM):
         # Check if operation is done
         is_done = operation_response.get("done", False)
         
-        # Check for operation errors
+        # Check for operation errors (can be at top level or in response)
         if "error" in operation_response:
             error_info = operation_response.get("error", {})
             error_msg = error_info.get("message", "Unknown error")
             error_code = error_info.get("code", 0)
-            raise Exception(f"Operation failed with error {error_code}: {error_msg}")
+            error_details = error_info.get("details", [])
+            
+            # Build detailed error message
+            detailed_error = f"Operation failed with error {error_code}: {error_msg}"
+            if error_details:
+                detailed_error += f" Details: {error_details}"
+            
+            # Set failed status in video object
+            video_obj_data["status"] = "failed"
+            video_obj_data["error"] = {
+                "message": error_msg,
+                "code": error_code,
+                "details": error_details,
+            }
+            return VideoObject(**video_obj_data)
         
         # Create base video object
         video_obj_data: Dict[str, Any] = {
@@ -266,6 +362,19 @@ class VertexVideoGeneration(VertexLLM):
                     video_item = videos[0]
                     video_uri = video_item.get("gcsUri") or video_item.get("uri") or ""
                     
+                    # Extract duration from video item if available
+                    duration_seconds = None
+                    if "duration" in video_item:
+                        try:
+                            duration_seconds = float(video_item["duration"])
+                        except (ValueError, TypeError):
+                            pass
+                    elif "durationSeconds" in video_item:
+                        try:
+                            duration_seconds = float(video_item["durationSeconds"])
+                        except (ValueError, TypeError):
+                            pass
+                    
                     if video_uri:
                         # Store video URI in hidden params for later retrieval
                         video_obj_data["_hidden_params"] = {
@@ -273,6 +382,11 @@ class VertexVideoGeneration(VertexLLM):
                             "operation_name": operation_name,
                             "mime_type": video_item.get("mimeType", "video/mp4"),
                         }
+                        
+                        # Store duration if available
+                        if duration_seconds is not None:
+                            video_obj_data["_hidden_params"]["duration_seconds"] = duration_seconds
+                            video_obj_data["seconds"] = str(duration_seconds)
                         
                         # Set status to completed
                         video_obj_data["status"] = "completed"
@@ -309,11 +423,36 @@ class VertexVideoGeneration(VertexLLM):
         
         # Create usage object with duration information for cost calculation
         usage_data = {}
+        # Try to get duration from multiple sources
+        duration_seconds = None
+        
+        # First, try from video_obj_data["seconds"]
         if "seconds" in video_obj_data:
             try:
-                usage_data["duration_seconds"] = float(video_obj_data["seconds"])
+                duration_seconds = float(video_obj_data["seconds"])
             except (ValueError, TypeError):
                 pass
+        
+        # Second, try from _hidden_params
+        if duration_seconds is None and "_hidden_params" in video_obj_data:
+            hidden_params = video_obj_data["_hidden_params"]
+            if "duration_seconds" in hidden_params:
+                try:
+                    duration_seconds = float(hidden_params["duration_seconds"])
+                except (ValueError, TypeError):
+                    pass
+        
+        # Third, try from optional_params if available (from request)
+        if duration_seconds is None and hasattr(self, '_last_optional_params'):
+            optional_params = getattr(self, '_last_optional_params', {})
+            if optional_params and "seconds" in optional_params:
+                try:
+                    duration_seconds = float(optional_params["seconds"])
+                except (ValueError, TypeError):
+                    pass
+        
+        if duration_seconds is not None:
+            usage_data["duration_seconds"] = duration_seconds
         
         video_obj_data["usage"] = usage_data
         
@@ -395,14 +534,24 @@ class VertexVideoGeneration(VertexLLM):
         
         # Transform optional params to camelCase format
         optional_params = self.transform_optional_params(optional_params)
+        
+        # Store optional_params for later use in duration extraction
+        self._last_optional_params = optional_params if optional_params else {}
 
         # Build request data
         request_data: Dict[str, Any] = {
             "instances": [{"prompt": prompt}],
         }
         
+        # Filter parameters to ensure JSON serializability
         if optional_params:
-            request_data["parameters"] = optional_params
+            serializable_params = {}
+            for key, value in optional_params.items():
+                # Only include JSON-serializable values
+                if self._is_json_serializable(value):
+                    serializable_params[key] = value
+            if serializable_params:
+                request_data["parameters"] = serializable_params
 
         headers = self.set_headers(auth_header=auth_header, extra_headers=extra_headers)
 
@@ -551,14 +700,24 @@ class VertexVideoGeneration(VertexLLM):
 
         # Transform optional params to camelCase format
         optional_params = self.transform_optional_params(optional_params)
+        
+        # Store optional_params for later use in duration extraction
+        self._last_optional_params = optional_params if optional_params else {}
 
         # Build request data
         request_data: Dict[str, Any] = {
             "instances": [{"prompt": prompt}],
         }
         
+        # Filter parameters to ensure JSON serializability
         if optional_params:
-            request_data["parameters"] = optional_params
+            serializable_params = {}
+            for key, value in optional_params.items():
+                # Only include JSON-serializable values
+                if self._is_json_serializable(value):
+                    serializable_params[key] = value
+            if serializable_params:
+                request_data["parameters"] = serializable_params
 
         headers = self.set_headers(auth_header=auth_header, extra_headers=extra_headers)
 

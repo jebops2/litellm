@@ -320,7 +320,22 @@ async def video_generation(
     Follows the OpenAI Videos API spec:
     https://platform.openai.com/docs/api-reference/videos
     
-    Example:
+    Supports multiple providers including:
+    - OpenAI (Sora models)
+    - Vertex AI (Veo models: veo-2.0-generate-001, veo-3.0-generate-001, veo-3.0-fast-generate-001, veo-3.0-generate-preview, veo-3.0-fast-generate-preview, veo-3.1-generate-001, veo-3.1-fast-generate-001, veo-3.1-generate-preview, veo-3.1-fast-generate-preview)
+    
+    Example for Vertex AI Veo:
+    ```bash
+    curl -X POST "http://localhost:4000/v1/videos" \
+        -H "Authorization: Bearer sk-1234" \
+        -H "Content-Type: application/json" \
+        -d '{
+            "model": "vertex_ai/veo-3.0-generate-preview",
+            "prompt": "A beautiful sunset over the ocean"
+        }'
+    ```
+    
+    Example for OpenAI:
     ```bash
     curl -X POST "http://localhost:4000/v1/videos" \
         -H "Authorization: Bearer sk-1234" \

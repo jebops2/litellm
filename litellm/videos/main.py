@@ -204,6 +204,63 @@ def video_generation(  # noqa: PLR0915
             custom_llm_provider=custom_llm_provider,
         )
 
+        # Special handling for Vertex AI video generation
+        # Vertex AI requires VertexVideoGeneration handler instead of generic handler
+        if custom_llm_provider == "vertex_ai":
+            from litellm.llms.vertex_ai.video_generation.video_generation_handler import (
+                VertexVideoGeneration,
+            )
+            from litellm.llms.vertex_ai.vertex_llm_base import VertexBase
+            
+            # Extract vertex parameters from litellm_params
+            vertex_base = VertexBase()
+            vertex_project = vertex_base.safe_get_vertex_ai_project(litellm_params=dict(litellm_params))
+            vertex_location = vertex_base.safe_get_vertex_ai_location(litellm_params=dict(litellm_params))
+            vertex_credentials = getattr(litellm_params, "vertex_credentials", None) or getattr(litellm_params, "vertex_ai_credentials", None)
+            
+            # Create VertexVideoGeneration instance
+            vertex_video_generation = VertexVideoGeneration()
+            
+            # Prepare optional_params - exclude non-serializable objects
+            optional_params_clean = {}
+            excluded_keys = {"client", "litellm_logging_obj", "litellm_call_id", "async_call", "mock_response"}
+            for key, value in kwargs.items():
+                if key not in excluded_keys and value is not None:
+                    optional_params_clean[key] = value
+            
+            # Call Vertex AI video generation
+            if _is_async:
+                return vertex_video_generation.avideo_generation(
+                    prompt=prompt,
+                    api_base=None,  # Will be auto-generated
+                    vertex_project=vertex_project,
+                    vertex_location=vertex_location,
+                    vertex_credentials=vertex_credentials,
+                    model=model,
+                    client=kwargs.get("client"),
+                    optional_params=optional_params_clean,
+                    timeout=timeout or 600,
+                    logging_obj=litellm_logging_obj,
+                    model_response=None,
+                    extra_headers=extra_headers,
+                )
+            else:
+                return vertex_video_generation.video_generation(
+                    prompt=prompt,
+                    api_base=None,  # Will be auto-generated
+                    vertex_project=vertex_project,
+                    vertex_location=vertex_location,
+                    vertex_credentials=vertex_credentials,
+                    model=model,
+                    client=kwargs.get("client"),
+                    optional_params=optional_params_clean,
+                    timeout=timeout or 600,
+                    logging_obj=litellm_logging_obj,
+                    model_response=None,
+                    avideo_generation=False,
+                    extra_headers=extra_headers,
+                )
+
         # get provider config
         video_generation_provider_config: Optional[BaseVideoConfig] = (
             ProviderConfigManager.get_provider_video_config(
