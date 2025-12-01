@@ -160,6 +160,7 @@ def _setup_timezone(
                 "Asia/Kolkata": timezone(timedelta(hours=5, minutes=30)),  # IST
                 "Asia/Bangkok": timezone(timedelta(hours=7)),  # ICT (Indochina Time)
                 "Europe/London": timezone(timedelta(hours=1)),  # BST
+                "Asia/Seoul": timezone(timedelta(hours=9)),  # KST (한국 표준시)
                 "UTC": timezone.utc,
             }
             tz = timezone_map.get(timezone_str, timezone.utc)
