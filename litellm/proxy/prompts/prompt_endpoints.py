@@ -25,6 +25,65 @@ from litellm.types.prompts.init_prompts import (
 router = APIRouter()
 
 
+async def sync_prompt_from_db(prompt_id: str) -> None:
+    """
+    Sync a single prompt from database to memory cache.
+    This ensures the prompt in memory is up-to-date with the database.
+    """
+    from datetime import datetime
+
+    from litellm.proxy.prompts.prompt_registry import IN_MEMORY_PROMPT_REGISTRY
+    from litellm.proxy.proxy_server import prisma_client
+
+    if prisma_client is None:
+        return
+
+    try:
+        db_prompt = await prisma_client.db.litellm_prompttable.find_unique(
+            where={"prompt_id": prompt_id}
+        )
+        if db_prompt is None:
+            return
+
+        prompt_spec = PromptSpec(**db_prompt.model_dump())
+        existing = IN_MEMORY_PROMPT_REGISTRY.get_prompt_by_id(prompt_spec.prompt_id)
+
+        # Check if prompt needs update
+        needs_update = False
+        if existing is None:
+            needs_update = True
+        else:
+            # Compare updated_at timestamps
+            existing_updated = existing.updated_at
+            db_updated = prompt_spec.updated_at
+            if isinstance(existing_updated, str):
+                existing_updated = datetime.fromisoformat(
+                    existing_updated.replace("Z", "+00:00")
+                )
+            if isinstance(db_updated, str):
+                db_updated = datetime.fromisoformat(db_updated.replace("Z", "+00:00"))
+            if db_updated > existing_updated:
+                needs_update = True
+
+        if needs_update:
+            # Remove old prompt from memory
+            if prompt_spec.prompt_id in IN_MEMORY_PROMPT_REGISTRY.IN_MEMORY_PROMPTS:
+                del IN_MEMORY_PROMPT_REGISTRY.IN_MEMORY_PROMPTS[prompt_spec.prompt_id]
+            if (
+                prompt_spec.prompt_id
+                in IN_MEMORY_PROMPT_REGISTRY.prompt_id_to_custom_prompt
+            ):
+                del IN_MEMORY_PROMPT_REGISTRY.prompt_id_to_custom_prompt[
+                    prompt_spec.prompt_id
+                ]
+            # Initialize updated prompt
+            IN_MEMORY_PROMPT_REGISTRY.initialize_prompt(
+                prompt=prompt_spec, config_file_path=None
+            )
+    except Exception as e:
+        verbose_proxy_logger.debug(f"Error syncing prompt {prompt_id} from DB: {e}")
+
+
 class Prompt(BaseModel):
     prompt_id: str
     litellm_params: PromptLiteLLMParams
@@ -78,12 +137,27 @@ async def list_prompts(
     """
     from litellm.proxy._types import LitellmUserRoles
     from litellm.proxy.prompts.prompt_registry import IN_MEMORY_PROMPT_REGISTRY
+    from litellm.proxy.proxy_server import prisma_client
 
     # check key metadata for prompts
     key_metadata = user_api_key_dict.metadata
     if key_metadata is not None:
         prompts = cast(Optional[List[str]], key_metadata.get("prompts", None))
         if prompts is not None:
+            # Sync prompts from DB if available
+            if prisma_client is not None:
+                try:
+                    db_prompts = await prisma_client.db.litellm_prompttable.find_many(
+                        where={"prompt_id": {"in": prompts}}
+                    )
+                    # Sync memory cache with DB using helper function
+                    for db_prompt in db_prompts:
+                        await sync_prompt_from_db(db_prompt.prompt_id)
+                except Exception as e:
+                    verbose_proxy_logger.debug(
+                        f"Error syncing prompts from DB: {e}"
+                    )
+
             return ListPromptsResponse(
                 prompts=[
                     IN_MEMORY_PROMPT_REGISTRY.IN_MEMORY_PROMPTS[prompt]
@@ -91,11 +165,22 @@ async def list_prompts(
                     if prompt in IN_MEMORY_PROMPT_REGISTRY.IN_MEMORY_PROMPTS
                 ]
             )
+
     # check if user is proxy admin - show all prompts
     if user_api_key_dict.user_role is not None and (
         user_api_key_dict.user_role == LitellmUserRoles.PROXY_ADMIN
         or user_api_key_dict.user_role == LitellmUserRoles.PROXY_ADMIN.value
     ):
+        # Sync all prompts from DB if available
+        if prisma_client is not None:
+            try:
+                db_prompts = await prisma_client.db.litellm_prompttable.find_many()
+                # Sync memory cache with DB using helper function
+                for db_prompt in db_prompts:
+                    await sync_prompt_from_db(db_prompt.prompt_id)
+            except Exception as e:
+                verbose_proxy_logger.debug(f"Error syncing prompts from DB: {e}")
+
         return ListPromptsResponse(
             prompts=list(IN_MEMORY_PROMPT_REGISTRY.IN_MEMORY_PROMPTS.values())
         )

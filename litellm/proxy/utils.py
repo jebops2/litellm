@@ -945,7 +945,11 @@ class ProxyLogging:
             and prompt_id is not None
             and (call_type == "completion" or call_type == "acompletion")
         ):
+            from litellm.proxy.prompts.prompt_endpoints import sync_prompt_from_db
             from litellm.proxy.prompts.prompt_registry import IN_MEMORY_PROMPT_REGISTRY
+
+            # Sync prompt from DB to ensure we have the latest version
+            await sync_prompt_from_db(prompt_id)
 
             custom_logger = IN_MEMORY_PROMPT_REGISTRY.get_prompt_callback_by_id(
                 prompt_id
