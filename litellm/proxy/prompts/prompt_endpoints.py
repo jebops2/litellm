@@ -288,14 +288,24 @@ async def sync_prompt_from_db(prompt_id: str) -> None:
             # Compare updated_at timestamps
             existing_updated = existing.updated_at
             db_updated = prompt_spec.updated_at
-            if isinstance(existing_updated, str):
-                existing_updated = datetime.fromisoformat(
-                    existing_updated.replace("Z", "+00:00")
-                )
-            if isinstance(db_updated, str):
-                db_updated = datetime.fromisoformat(db_updated.replace("Z", "+00:00"))
-            if db_updated > existing_updated:
+            
+            # Handle None values - if either is None, update is needed
+            if existing_updated is None or db_updated is None:
                 needs_update = True
+            else:
+                # Convert strings to datetime if needed
+                if isinstance(existing_updated, str):
+                    existing_updated = datetime.fromisoformat(
+                        existing_updated.replace("Z", "+00:00")  # type: ignore
+                    )
+                if isinstance(db_updated, str):
+                    db_updated = datetime.fromisoformat(
+                        db_updated.replace("Z", "+00:00")  # type: ignore
+                    )
+                
+                # Both are datetime objects now, safe to compare
+                if db_updated > existing_updated:
+                    needs_update = True
 
         if needs_update:
             # Remove old prompt from memory
