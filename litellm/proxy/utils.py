@@ -957,6 +957,7 @@ class ProxyLogging:
         ):
             from litellm.proxy.prompts.prompt_endpoints import sync_prompt_from_db
             from litellm.proxy.prompts.prompt_registry import IN_MEMORY_PROMPT_REGISTRY
+            from litellm.utils import get_non_default_completion_params
 
             # Sync prompt from DB to ensure we have the latest version
             await sync_prompt_from_db(prompt_id)
