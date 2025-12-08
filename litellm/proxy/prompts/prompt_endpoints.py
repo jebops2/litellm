@@ -877,18 +877,24 @@ async def delete_prompt(
         )
 
     try:
+        # Extract base prompt_id and version from the prompt_id
+        base_prompt_id = get_base_prompt_id(prompt_id=prompt_id)
+        version = get_version_number(prompt_id=prompt_id)
+        
         # Try to get prompt directly first
         existing_prompt = IN_MEMORY_PROMPT_REGISTRY.get_prompt_by_id(prompt_id)
         
-        # If not found, try to find the latest version
+        # If not found, try to find the latest version (for backward compatibility)
         if existing_prompt is None:
             latest_prompt_id = get_latest_version_prompt_id(
                 prompt_id=prompt_id,
                 all_prompt_ids=IN_MEMORY_PROMPT_REGISTRY.IN_MEMORY_PROMPTS
             )
             existing_prompt = IN_MEMORY_PROMPT_REGISTRY.get_prompt_by_id(latest_prompt_id)
-            # Use the resolved prompt_id for deletion
-            prompt_id = latest_prompt_id
+            if existing_prompt is not None:
+                # Update base_prompt_id and version from the latest prompt
+                base_prompt_id = get_base_prompt_id(prompt_id=latest_prompt_id)
+                version = get_version_number(prompt_id=latest_prompt_id)
         
         if existing_prompt is None:
             raise HTTPException(
@@ -901,10 +907,29 @@ async def delete_prompt(
                 detail="Cannot delete config prompts.",
             )
 
-        # Delete the prompt from the database
-        await prisma_client.db.litellm_prompttable.delete(
-            where={"prompt_id": prompt_id}
-        )
+        # Delete the specific version from the database using composite unique constraint
+        try:
+            await prisma_client.db.litellm_prompttable.delete(
+                where={
+                    "prompt_id_version": {
+                        "prompt_id": base_prompt_id,
+                        "version": version
+                    }
+                }
+            )
+        except Exception as delete_error:
+            # Fallback to deleteMany if composite key format doesn't work
+            deleted = await prisma_client.db.litellm_prompttable.delete_many(
+                where={
+                    "prompt_id": base_prompt_id,
+                    "version": version
+                }
+            )
+            if deleted == 0:
+                raise HTTPException(
+                    status_code=404,
+                    detail=f"Prompt {prompt_id} (version {version}) not found"
+                )
 
         # Remove the prompt from memory
         del IN_MEMORY_PROMPT_REGISTRY.IN_MEMORY_PROMPTS[prompt_id]
