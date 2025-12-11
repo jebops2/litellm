@@ -326,6 +326,88 @@ async def sync_prompt_from_db(prompt_id: str) -> None:
         verbose_proxy_logger.debug(f"Error syncing prompt {prompt_id} from DB: {e}")
 
 
+async def sync_all_prompts_from_db() -> None:
+    """
+    Sync all prompts from database to memory cache.
+    This ensures all prompts in memory are up-to-date with the database.
+    This is critical for multi-pod deployments where each pod has its own memory cache.
+    """
+    from datetime import datetime
+
+    from litellm.proxy.prompts.prompt_registry import IN_MEMORY_PROMPT_REGISTRY
+    from litellm.proxy.proxy_server import prisma_client
+
+    if prisma_client is None:
+        return
+
+    try:
+        # Get all prompts from database
+        db_prompts = await prisma_client.db.litellm_prompttable.find_many()
+        
+        # Track which prompts exist in DB
+        db_prompt_ids = set()
+        
+        for db_prompt in db_prompts:
+            # Create versioned prompt spec
+            prompt_spec = create_versioned_prompt_spec(db_prompt=db_prompt)
+            db_prompt_ids.add(prompt_spec.prompt_id)
+            
+            # Check if prompt needs update
+            existing = IN_MEMORY_PROMPT_REGISTRY.get_prompt_by_id(prompt_spec.prompt_id)
+            needs_update = False
+            
+            if existing is None:
+                needs_update = True
+            else:
+                # Compare updated_at timestamps
+                existing_updated = existing.updated_at
+                db_updated = prompt_spec.updated_at
+                
+                if existing_updated is None or db_updated is None:
+                    needs_update = True
+                else:
+                    # Convert strings to datetime if needed
+                    if isinstance(existing_updated, str):
+                        existing_updated = datetime.fromisoformat(
+                            existing_updated.replace("Z", "+00:00")  # type: ignore
+                        )
+                    if isinstance(db_updated, str):
+                        db_updated = datetime.fromisoformat(
+                            db_updated.replace("Z", "+00:00")  # type: ignore
+                        )
+                    
+                    if db_updated > existing_updated:
+                        needs_update = True
+            
+            if needs_update:
+                # Remove old prompt from memory
+                if prompt_spec.prompt_id in IN_MEMORY_PROMPT_REGISTRY.IN_MEMORY_PROMPTS:
+                    del IN_MEMORY_PROMPT_REGISTRY.IN_MEMORY_PROMPTS[prompt_spec.prompt_id]
+                if (
+                    prompt_spec.prompt_id
+                    in IN_MEMORY_PROMPT_REGISTRY.prompt_id_to_custom_prompt
+                ):
+                    del IN_MEMORY_PROMPT_REGISTRY.prompt_id_to_custom_prompt[
+                        prompt_spec.prompt_id
+                    ]
+                # Initialize updated prompt
+                IN_MEMORY_PROMPT_REGISTRY.initialize_prompt(
+                    prompt=prompt_spec, config_file_path=None
+                )
+        
+        # Remove prompts from memory that no longer exist in DB
+        memory_prompt_ids = set(IN_MEMORY_PROMPT_REGISTRY.IN_MEMORY_PROMPTS.keys())
+        deleted_prompt_ids = memory_prompt_ids - db_prompt_ids
+        for deleted_id in deleted_prompt_ids:
+            if deleted_id in IN_MEMORY_PROMPT_REGISTRY.IN_MEMORY_PROMPTS:
+                del IN_MEMORY_PROMPT_REGISTRY.IN_MEMORY_PROMPTS[deleted_id]
+            if deleted_id in IN_MEMORY_PROMPT_REGISTRY.prompt_id_to_custom_prompt:
+                del IN_MEMORY_PROMPT_REGISTRY.prompt_id_to_custom_prompt[deleted_id]
+                
+    except Exception as e:
+        verbose_proxy_logger.debug(f"Error syncing all prompts from DB: {e}")
+
+
 class Prompt(BaseModel):
     prompt_id: str
     litellm_params: PromptLiteLLMParams
@@ -380,6 +462,10 @@ async def list_prompts(
     from litellm.proxy._types import LitellmUserRoles
     from litellm.proxy.prompts.prompt_registry import IN_MEMORY_PROMPT_REGISTRY
     from litellm.proxy.proxy_server import prisma_client
+
+    # Sync all prompts from DB to ensure consistency across pods
+    # This is critical in multi-pod deployments where each pod has its own memory cache
+    await sync_all_prompts_from_db()
 
     # check key metadata for prompts
     key_metadata = user_api_key_dict.metadata
@@ -686,7 +772,7 @@ async def create_prompt(
         # Get next version number
         new_version = await get_next_version_for_prompt(
             prisma_client=prisma_client, prompt_id=request.prompt_id
-        )
+            )
 
         # Store prompt in db with version
         prompt_db_entry = await prisma_client.db.litellm_prompttable.create(

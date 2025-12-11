@@ -1070,56 +1070,58 @@ class ProxyLogging:
         guardrail_tasks = []
 
         for callback in litellm.callbacks:
-            if isinstance(callback, CustomGuardrail):
-                ################################################################
-                # Check if guardrail should be run for GuardrailEventHooks.during_call hook
-                ################################################################
+                if isinstance(callback, CustomGuardrail):
+                    # Type narrowing: assign to typed variable so type checker recognizes CustomGuardrail
+                    guardrail: CustomGuardrail = callback
+                    ################################################################
+                    # Check if guardrail should be run for GuardrailEventHooks.during_call hook
+                    ################################################################
 
-                # V1 implementation - backwards compatibility
-                if callback.event_hook is None and hasattr(
-                    callback, "moderation_check"
-                ):
-                    if callback.moderation_check == "pre_call":  # type: ignore
-                        return
-                else:
-                    # Main - V2 Guardrails implementation
-                    from litellm.types.guardrails import GuardrailEventHooks
-
-                    event_type = GuardrailEventHooks.during_call
-                    if call_type == "mcp_call":
-                        event_type = GuardrailEventHooks.during_mcp_call
-
-                    if (
-                        callback.should_run_guardrail(data=data, event_type=event_type)
-                        is not True
+                    # V1 implementation - backwards compatibility
+                    if guardrail.event_hook is None and hasattr(
+                        guardrail, "moderation_check"
                     ):
-                        continue
-                # Convert user_api_key_dict to proper format for async_moderation_hook
-                if call_type == "mcp_call":
-                    user_api_key_auth_dict = self._convert_user_api_key_auth_to_dict(
-                        user_api_key_dict
-                    )
-                else:
-                    user_api_key_auth_dict = user_api_key_dict
-                # Add task to list for parallel execution
-                if (
-                    "apply_guardrail" in type(callback).__dict__
-                    and user_api_key_dict is not None
-                ):
-                    data["guardrail_to_apply"] = callback
-                    guardrail_task = unified_guardrail.async_moderation_hook(
-                        user_api_key_dict=user_api_key_dict,
-                        data=data,
-                        call_type=call_type,
-                    )
-                else:
+                        if guardrail.moderation_check == "pre_call":  # type: ignore
+                            return
+                    else:
+                        # Main - V2 Guardrails implementation
+                        from litellm.types.guardrails import GuardrailEventHooks
 
-                    guardrail_task = callback.async_moderation_hook(
-                        data=data,
-                        user_api_key_dict=user_api_key_auth_dict,  # type: ignore
-                        call_type=call_type,  # type: ignore
-                    )
-                guardrail_tasks.append(guardrail_task)
+                        event_type = GuardrailEventHooks.during_call
+                        if call_type == "mcp_call":
+                            event_type = GuardrailEventHooks.during_mcp_call
+
+                        if (
+                        guardrail.should_run_guardrail(data=data, event_type=event_type)
+                            is not True
+                        ):
+                            continue
+                    # Convert user_api_key_dict to proper format for async_moderation_hook
+                    if call_type == "mcp_call":
+                        user_api_key_auth_dict = self._convert_user_api_key_auth_to_dict(
+                            user_api_key_dict
+                        )
+                    else:
+                        user_api_key_auth_dict = user_api_key_dict
+                    # Add task to list for parallel execution
+                    if (
+                        "apply_guardrail" in type(guardrail).__dict__
+                        and user_api_key_dict is not None
+                    ):
+                        data["guardrail_to_apply"] = guardrail
+                        guardrail_task = unified_guardrail.async_moderation_hook(
+                            user_api_key_dict=user_api_key_dict,
+                            data=data,
+                            call_type=call_type,
+                        )
+                    else:
+
+                        guardrail_task = guardrail.async_moderation_hook(
+                            data=data,
+                            user_api_key_dict=user_api_key_auth_dict,  # type: ignore
+                            call_type=call_type,  # type: ignore
+                        )
+                    guardrail_tasks.append(guardrail_task)
 
         # Step 2: Run all guardrail tasks in parallel
         if guardrail_tasks:
@@ -1537,9 +1539,9 @@ class ProxyLogging:
                     data["guardrail_to_apply"] = callback
                     guardrail_response = (
                         await unified_guardrail.async_post_call_success_hook(
-                            user_api_key_dict=user_api_key_dict,
-                            data=data,
-                            response=response,
+                        user_api_key_dict=user_api_key_dict,
+                        data=data,
+                        response=response,
                         )
                     )
                 else:
@@ -3647,10 +3649,12 @@ def _merge_guardrails_with_existing(data: dict, model_level_guardrails: Any) -> 
 def get_error_message_str(e: Exception) -> str:
     error_message = ""
     if isinstance(e, HTTPException):
-        if isinstance(e.detail, str):
-            error_message = e.detail
-        elif isinstance(e.detail, dict):
-            error_message = json.dumps(e.detail)
+        # Type narrowing: assign to typed variable so type checker recognizes HTTPException
+        http_exc: HTTPException = e
+        if isinstance(http_exc.detail, str):
+            error_message = http_exc.detail
+        elif isinstance(http_exc.detail, dict):
+            error_message = json.dumps(http_exc.detail)
         elif hasattr(e, "message"):
             _error = getattr(e, "message", None)
             if isinstance(_error, str):
